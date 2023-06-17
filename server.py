@@ -1,6 +1,11 @@
+import atexit
 import threading
+import logging
 from socketserver import ThreadingTCPServer, StreamRequestHandler
 from typing import Optional
+
+logging.basicConfig(level=logging.DEBUG, format='[%(name)s]: %(message)s')
+log = logging.getLogger('server')
 
 class Data:
     def __init__(self):
@@ -41,13 +46,21 @@ class ServerProtocol:
         key, value = map(str.strip, kv_pair)
         return key, value
     
+    def key(self, key: str) -> Optional[str]:
+        pair = self.pair()
+        if pair is None:
+            return None
+        k, v = pair
+        assert k == key, f"invalid key: {k}, expected: {key}"
+        return v
+    
     def writeline(self, line: str):
         self.wfile.write(bytes(line+"\n", self.encoding))
 
 class RequestHandler(StreamRequestHandler):
 
     def handle(self):
-        print('Got connection from', self.client_address)
+        log.info(f"connected to {self.client_address}")
         protocol = ServerProtocol(self.rfile, self.wfile)
         while True:
             ty = protocol.type()
@@ -60,6 +73,14 @@ class RequestHandler(StreamRequestHandler):
             print(f"Sending data back: {repr(data)}")
             protocol.writeline(data)
 
+
+@atexit.register
+def cleanup():
+    log.critical("shutting server down")
+
+    # Prevents zombie threads running in the background
+    # as daemons
+    server.shutdown()
 
 if __name__ == '__main__':
     HOST, PORT = "127.0.0.1", 6969
@@ -74,7 +95,6 @@ if __name__ == '__main__':
         # Exit the server thread when the main thread terminates
         server_thread.daemon = True
         server_thread.start()
-        print("Server loop running in thread:", server_thread.name)
-
+        log.info(f"server loop running in thread: {server_thread}")
         while True:
             pass
