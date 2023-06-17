@@ -31,6 +31,14 @@ class ClientProtocol:
     
     def pair(self, key: str, value: str):
         self.writeline(f"{key}: {value}")
+    
+    def read_pair(self) -> Optional[str]:
+        line = self.readline()
+        if line is None:
+            return None
+        kv_pair = line.split(":")
+        key, value = map(str.strip, kv_pair)
+        return key, value
 
 
 class Client:
@@ -53,7 +61,9 @@ class Client:
 client = Client()
 p = ClientProtocol(client.socket)
 p.message_type("register")
-data = p.readline()
+p.pair("username", "test")
+p.pair("password", "1234")
+data = p.read_pair()
 #data = client.recv(1024) 
 print('Received', data)
 

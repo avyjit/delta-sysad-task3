@@ -7,13 +7,18 @@ from typing import Optional
 logging.basicConfig(level=logging.DEBUG, format='[%(name)s]: %(message)s')
 log = logging.getLogger('server')
 
-class Data:
+class DataStore:
     def __init__(self):
         self.data = {}
         self.passwd = {}
 
     def __repr__(self):
         return f"Data({repr(self.data)})"
+    
+    def user_exists(self, username: str) -> bool:
+        return username in self.passwd
+
+DATA = DataStore()
 
 class ServerProtocol:
 
@@ -46,6 +51,9 @@ class ServerProtocol:
         key, value = map(str.strip, kv_pair)
         return key, value
     
+    def send_pair(self, key: str, value: str):
+        self.writeline(f"{key}: {value}")
+    
     def key(self, key: str) -> Optional[str]:
         pair = self.pair()
         if pair is None:
@@ -56,8 +64,12 @@ class ServerProtocol:
     
     def writeline(self, line: str):
         self.wfile.write(bytes(line+"\n", self.encoding))
+    
+    def register(self):
+        pass
 
 class RequestHandler(StreamRequestHandler):
+    timeout = 5
 
     def handle(self):
         log.info(f"connected to {self.client_address}")
@@ -66,13 +78,11 @@ class RequestHandler(StreamRequestHandler):
             ty = protocol.type()
             if ty == "register":
                 username = protocol.key("username")
+                password = protocol.key("password")
+                if not DATA.user_exists(username):
+                    protocol.send_pair("result", "exists")
             if ty is None or ty == "Close":
                 break
-            data = ty
-            print(f"Got: data={data}")
-            print(f"Sending data back: {repr(data)}")
-            protocol.writeline(data)
-
 
 @atexit.register
 def cleanup():
@@ -92,9 +102,8 @@ if __name__ == '__main__':
         # Start a thread with the server -- that thread will then start one
         # more thread for each request
         server_thread = threading.Thread(target=server.serve_forever)
-        # Exit the server thread when the main thread terminates
-        server_thread.daemon = True
+        #server_thread.daemon = True
         server_thread.start()
-        log.info(f"server loop running in thread: {server_thread}")
+        log.info(f"main: {server_thread}")
         while True:
             pass
