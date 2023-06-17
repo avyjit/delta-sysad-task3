@@ -4,7 +4,7 @@ import logging
 from socketserver import ThreadingTCPServer, StreamRequestHandler
 from typing import Optional
 
-logging.basicConfig(level=logging.DEBUG, format='[%(name)s]: %(message)s')
+logging.basicConfig(level=logging.INFO, format='[%(name)s]: %(message)s')
 log = logging.getLogger('server')
 
 class DataStore:
@@ -31,7 +31,9 @@ class ServerProtocol:
         line = self.rfile.readline()
         if not line:
             return None
-        return line.decode(self.encoding).rstrip()
+        ret = line.decode(self.encoding).rstrip()
+        log.debug(ret)
+        return ret
     
     def type(self) -> Optional[str]:
         line = self.readline()
@@ -66,7 +68,13 @@ class ServerProtocol:
         self.wfile.write(bytes(line+"\n", self.encoding))
     
     def register(self):
-        pass
+        username = self.key("username")
+        password = self.key("password")
+        if not DATA.user_exists(username):
+            DATA.passwd[username] = password
+            self.send_pair("result", "success")
+        else:
+            self.send_pair("result", "exists")
 
 class RequestHandler(StreamRequestHandler):
     timeout = 5
@@ -77,11 +85,8 @@ class RequestHandler(StreamRequestHandler):
         while True:
             ty = protocol.type()
             if ty == "register":
-                username = protocol.key("username")
-                password = protocol.key("password")
-                if not DATA.user_exists(username):
-                    protocol.send_pair("result", "exists")
-            if ty is None or ty == "Close":
+                protocol.register()
+            if ty is None or ty == "close":
                 break
 
 @atexit.register

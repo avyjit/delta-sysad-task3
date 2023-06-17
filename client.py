@@ -1,5 +1,6 @@
 import socket
 from typing import Optional
+import sys
 
 HOST = "127.0.0.1"  # The server's hostname or IP address
 PORT = 6969  # The port used by the server
@@ -39,7 +40,25 @@ class ClientProtocol:
         kv_pair = line.split(":")
         key, value = map(str.strip, kv_pair)
         return key, value
+    
+    def register(self, username: str, password: str) -> str:
+        self.message_type("register")
+        self.pair("username", username)
+        self.pair("password", password)
+        data = self.read_pair()
+        assert data[0] == "result"
+        return data[1]
+    
+    # def upload(self, path: str):
+    #     self.message_type("upload")
+    #     self.pair("bytes", 69)
+    #     data = self.read_pair()
+    #     assert data[0] == "result"
+    #     return data[1]
 
+    def close(self):
+        self.message_type("close")
+        self.socket.close()
 
 class Client:
 
@@ -58,12 +77,11 @@ class Client:
         return self.socket.recv(size)
 
 
-client = Client()
-p = ClientProtocol(client.socket)
-p.message_type("register")
-p.pair("username", "test")
-p.pair("password", "1234")
-data = p.read_pair()
+socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+socket.connect((HOST, PORT))
+p = ClientProtocol(socket)
+res = p.register("test", "1234")
+p.message_type("close")
 #data = client.recv(1024) 
-print('Received', data)
+print('Received', res)
 
