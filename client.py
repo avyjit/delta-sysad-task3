@@ -49,12 +49,16 @@ class ClientProtocol:
         assert data[0] == "result"
         return data[1]
     
-    # def upload(self, path: str):
-    #     self.message_type("upload")
-    #     self.pair("bytes", 69)
-    #     data = self.read_pair()
-    #     assert data[0] == "result"
-    #     return data[1]
+    def upload(self, path: str):
+        self.message_type("upload")
+        with open(path, "rb") as f:
+            data = f.read()
+        self.pair("bytes", len(data))
+        # Send the raw file over the socket
+        self.socket.sendall(data)
+        data = self.read_pair()
+        assert data[0] == "result"
+        return data[1]
 
     def close(self):
         self.message_type("close")
@@ -80,7 +84,7 @@ class Client:
 socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 socket.connect((HOST, PORT))
 p = ClientProtocol(socket)
-res = p.register("test", "1234")
+res = p.upload("file.log")
 p.message_type("close")
 #data = client.recv(1024) 
 print('Received', res)

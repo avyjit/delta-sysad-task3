@@ -26,6 +26,9 @@ class ServerProtocol:
         self.rfile = rfile
         self.wfile = wfile
         self.encoding = "ascii"
+
+    def read_bytes(self, nbytes: int) -> bytes:
+        return self.rfile.read(nbytes)
     
     def readline(self) -> Optional[str]:
         line = self.rfile.readline()
@@ -75,6 +78,13 @@ class ServerProtocol:
             self.send_pair("result", "success")
         else:
             self.send_pair("result", "exists")
+    
+    def upload(self):
+        nbytes = int(self.key("bytes"))
+        content = self.read_bytes(nbytes)
+        with open("result.log", "wb") as f:
+            f.write(content)
+        self.send_pair("result", "success")
 
 class RequestHandler(StreamRequestHandler):
     timeout = 5
@@ -86,6 +96,8 @@ class RequestHandler(StreamRequestHandler):
             ty = protocol.type()
             if ty == "register":
                 protocol.register()
+            elif ty == "upload":
+                protocol.upload()
             if ty is None or ty == "close":
                 break
 
