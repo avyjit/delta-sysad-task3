@@ -65,7 +65,7 @@ class RequestHandler(StreamRequestHandler):
         while True:
             ty = protocol.type()
             if ty == "register":
-                pass
+                username = protocol.key("username")
             if ty is None or ty == "Close":
                 break
             data = ty
