@@ -129,6 +129,17 @@ class DataAccessLayer:
     
     def authenticate(self, username: str, password: str):
         return self.users.get(username) == password
+    
+    def _authenticate(self, username: str, password: str):
+        with self.lock:
+            self.cursor.execute(
+                "SELECT password FROM users WHERE username = ?", (username,)
+            )
+            res = self.cursor.fetchone()
+            if res is not None:
+                return res[0] == password
+            else:
+                return False
 
 DATA = DataAccessLayer()
 
@@ -227,7 +238,7 @@ class ServerProtocol:
                 "message": f"no such user: {username}. please register first"
             }
         
-        if not DATA.authenticate(username, password):
+        if not DATA._authenticate(username, password):
             return {
                 "result": "error",
                 "message": f"invalid credentials for user: {username}"
