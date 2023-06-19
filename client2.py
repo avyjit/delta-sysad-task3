@@ -6,6 +6,7 @@ import sys
 import zlib
 import json
 import base64
+import argparse
 from typing import Optional, Dict
 
 HOST = "127.0.0.1"  # The server's hostname or IP address
@@ -62,6 +63,10 @@ class ClientProtocol:
         return self.response()
     
     def upload(self, path: str):
+        token = self.token()
+
+        if token is None:
+            return
         with open(path, "rb") as f:
             content = f.read()
         
@@ -71,12 +76,13 @@ class ClientProtocol:
         self.send({
             "type": "upload",
             "name": os.path.basename(path),
-            "content": b64
+            "content": b64,
+            "token": token
         })
 
         return self.response()
     
-    def download(self, name: str):
+    def download(self, name: str, output: Optional[str] = None):
         self.send({
             "type": "download",
             "name": name
@@ -84,39 +90,42 @@ class ClientProtocol:
 
         response = self.response()
         assert response["result"] == "success"
-        print(response)
         content = base64.b64decode(response["content"])
         content = zlib.decompress(content)
 
-        print(content)
-    
-    
-
-    def upload__(self, path: str):
-        self.message_type("upload")
-        self.pair("name", os.path.basename(path))
-        with open(path, "rb") as f:
-            data = f.read()
+        if output is None:
+            output = name
         
-        # compress at maximum level
-        # trades cpu time for smaller size
-        data = zlib.compress(data, level=9)
-
-        self.pair("bytes", len(data))
-        # Send the raw file over the socket
-        self.socket.sendall(data)
-        data = self.read_pair()
-        assert data[0] == "result"
-        return data[1]
     
-    def download__(self, name: str):
-        self.message_type("download")
-        self.pair("name", name)
-        nbytes = self.read_key("bytes")
-        content = self.read_bytes(int(nbytes))
-        content = zlib.decompress(content)
-        with open(name, "wb") as f:
+        with open(output, "wb") as f:
             f.write(content)
+    
+    def login(self, username: str, password: str):
+        if os.path.exists("token.json"):
+            print("Already logged in.")
+            return
+        
+        self.send({
+            "type": "login",
+            "username": username,
+            "password": password
+        })
+
+        token = self.response()
+        if token["result"] != "success":
+            print(f"Login failed: {token['message']}")
+        else:
+            print(f"Login successful.")
+            with open("token.json", "w") as f:
+                json.dump(token, f)
+    
+    def token(self) -> Optional[Dict]:
+        if not os.path.exists("token.json"):
+            print("You have not logged in yet.")
+            return None
+        
+        with open("token.json", "r") as f:
+            return json.load(f)
 
     def close(self):
         self.message_type("close")
@@ -124,10 +133,50 @@ class ClientProtocol:
 
 
 
+def main():
+    parser = argparse.ArgumentParser(description='Delta Fileserver Client')
 
-socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-socket.connect((HOST, PORT))
-p = ClientProtocol(socket)
-print(p.register("alloo", "paratha"))
-print(p.upload("file.log"))
-p.download("file.log")
+    subparsers = parser.add_subparsers(title='subcommands', dest='subcommand')
+
+    # Register subcommand
+    register_parser = subparsers.add_parser('register', help='register a user')
+    register_parser.add_argument('username', type=str, help='Username')
+    register_parser.add_argument('password', type=str, help='Password')
+
+
+    # Upload subcommand
+    upload_parser = subparsers.add_parser('upload', help='upload a file')
+    upload_parser.add_argument('path', type=str, help='path to file to be uploaded')
+
+
+    # Download subcommand
+    download_parser = subparsers.add_parser('download', help='download a file')
+    download_parser.add_argument('name', type=str, help='file name to download')
+    # Add an optional output file
+    download_parser.add_argument('-o', '--output', type=str, required=False, help='output file to given path')
+
+    login_parser = subparsers.add_parser('login', help='login using credentials')
+    login_parser.add_argument('username', type=str, help='username')
+    login_parser.add_argument('password', type=str, help='password')
+
+
+    args = parser.parse_args()
+    if args.subcommand is None:
+        parser.print_help()
+        sys.exit(1)
+    
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.connect((HOST, PORT))
+    p = ClientProtocol(sock)
+
+    if args.subcommand == "register":
+        print(p.register(args.username, args.password))
+    elif args.subcommand == "upload":
+        print(p.upload(args.path))
+    elif args.subcommand == "download":
+        p.download(args.name, args.output)
+    elif args.subcommand == "login":
+        p.login(args.username, args.password)
+
+if __name__ == '__main__':
+    main()
