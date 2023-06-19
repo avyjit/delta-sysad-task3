@@ -136,12 +136,6 @@ class ServerProtocol:
 
         return handler(data)
 
-    def authorize(self, token: Dict) -> Optional[Dict]:
-        username = token["username"]
-        signature = token["sign"]
-        computed = self.compute_signature(username)
-        return computed == signature
-
     def handle_register(self, data: Dict):
         assert data["type"] == "register"
         username = data["username"]
@@ -182,6 +176,14 @@ class ServerProtocol:
         return {"result": "success", "content": encoded}
 
     def handle_login(self, data: Dict):
+        """
+        Checks if the user exists and if the password is correct.
+        If so, generates a token for the user and sends it back to the client.
+        The token consists of the username and a signature.
+        The signature is computed using HMAC using our secret key and the username.
+        This signs the username as the owner of the token, and other users
+        cannot fake a token without knowing our secret key.
+        """
         username = data["username"]
         password = data["password"]
 
@@ -205,13 +207,46 @@ class ServerProtocol:
             "sign": self.compute_signature(username),
         }
 
+    def authorize(self, token: Dict) -> Optional[Dict]:
+        """
+        Verifies if the token's signature is valid
+        using HMAC using our secret key and the username.
+        If the signature is valid, returns the token.
+        Prevents people from faking a token with another username
+        """
+        username = token["username"]
+        signature = token["sign"]
+        computed = self.compute_signature(username)
+        return computed == signature
+
     @staticmethod
     def compute_signature(string: str):
+        """
+        Computes the HMAC signature of a string using our secret key.
+        Unless you know the secret key, you cannot compute the signature
+        feasibly.
+        """
         signature = hmac.new(SECRET_KEY, string.encode(ENCODING), "sha256").digest()
         signature = base64.b64encode(signature).decode(ENCODING)
         return signature
 
     def authorized_only(self, func):
+        """
+        Convenient wrapper for functions that require authorization.
+        Checks the existence of a token in the data and validates it,
+        before actually calling the function with the data.
+
+        If the token is invalid, returns an error message.
+
+        To make a function require authorization,
+        simply wrap it with this function.
+
+        Example:
+        >>> self.authorized_only(self.handle_upload)
+        is a new function that always validates the token before
+        actually handling the upload.
+        """
+
         @wraps(func)
         def _authorized_handler(data: Dict):
             if "token" not in data:
