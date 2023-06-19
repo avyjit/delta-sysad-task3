@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 import os
 import socket
 import sys
@@ -44,8 +46,6 @@ class ClientProtocol:
     
     def pair(self, key: str, value: str):
         self.writeline(f"{key}: {value}")
-    
-    
     
     def read_pair(self) -> Optional[str]:
         line = self.readline()
@@ -102,12 +102,29 @@ class ClientProtocol:
         self.message_type("close")
         self.socket.close()
 
+
+if len(sys.argv) < 2:
+    print("Usage: client.py <command> [args...]")
+    sys.exit(0)
+
+
+
 socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 socket.connect((HOST, PORT))
 p = ClientProtocol(socket)
-#res = p.upload("file.log")
-#p.download("file.log")
-p.message_type("close")
-#data = client.recv(1024) 
-#print('Received', res)
 
+cmd = sys.argv[1]
+if cmd == "register":
+    username = sys.argv[2]
+    password = sys.argv[3]
+    result = p.register(username, password)
+    print(result)
+elif cmd == "upload":
+    path = sys.argv[2]
+    result = p.upload(path)
+    print(result)
+elif cmd == "download":
+    name = sys.argv[2]
+    p.download(name)
+
+p.message_type("close")
