@@ -1,7 +1,7 @@
 import atexit
-import threading
 import logging
-from socketserver import ThreadingTCPServer, StreamRequestHandler
+import threading
+from socketserver import StreamRequestHandler, ThreadingTCPServer
 from typing import Optional
 
 logging.basicConfig(level=logging.INFO, format='[%(name)s]: %(message)s')
@@ -9,11 +9,14 @@ log = logging.getLogger('server')
 
 class DataStore:
     def __init__(self):
-        self.data = {}
+        self.files = {}
         self.passwd = {}
     
     def user_exists(self, username: str) -> bool:
         return username in self.passwd
+    
+    def store_file(self, name: str, content: bytes):
+        self.files[name] = content
 
 DATA = DataStore()
 
@@ -27,6 +30,9 @@ class ServerProtocol:
     def read_bytes(self, nbytes: int) -> bytes:
         return self.rfile.read(nbytes)
     
+    def write_bytes(self, content: bytes):
+        self.wfile.write(content)
+
     def readline(self) -> Optional[str]:
         line = self.rfile.readline()
         if not line:
@@ -64,6 +70,7 @@ class ServerProtocol:
         assert k == key, f"invalid key: {k}, expected: {key}"
         return v
     
+
     def writeline(self, line: str):
         self.wfile.write(bytes(line+"\n", self.encoding))
     
@@ -80,9 +87,23 @@ class ServerProtocol:
         name = self.key("name")
         nbytes = int(self.key("bytes"))
         content = self.read_bytes(nbytes)
-        with open("result.log", "wb") as f:
-            f.write(content)
+        DATA.store_file(name, content)
         self.send_pair("result", "success")
+    
+    def download(self):
+        """
+        From client:
+        message-type: download
+        name: <name>
+
+        Server:
+        bytes: <bytes>
+        <content>
+        """        
+        name = self.key("name")
+        content = DATA.files[name]
+        self.send_pair("bytes", len(content))
+        self.write_bytes(content)
 
 class RequestHandler(StreamRequestHandler):
     timeout = 5
@@ -96,6 +117,8 @@ class RequestHandler(StreamRequestHandler):
                 protocol.register()
             elif ty == "upload":
                 protocol.upload()
+            elif ty == "download":
+                protocol.download()
             if ty is None or ty == "close":
                 break
 
