@@ -1,0 +1,13 @@
+CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT NOT NULL UNIQUE,
+    password TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS files (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    file_id CHAR(32) NOT NULL UNIQUE,
+    file_name TEXT,
+    owner_id INTEGER,
+    FOREIGN KEY (owner_id) REFERENCES users (id)
+);

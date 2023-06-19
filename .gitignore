@@ -161,3 +161,6 @@ cython_debug/
 
 # The client stores the token in token.json
 token.json
+
+# filestorage
+filestorage/

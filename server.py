@@ -4,6 +4,9 @@ import hmac
 import json
 import logging
 import threading
+import pathlib
+import sqlite3
+import uuid
 from functools import wraps
 from socketserver import StreamRequestHandler, ThreadingTCPServer
 from typing import Dict, Optional
@@ -16,6 +19,8 @@ ENCODING = 'utf-8'
 # but ill load from an environment variable
 # for "production" lmao
 SECRET_KEY = b"LOAD_FROM_ENVVAR_THIS_IS_UNSAFE_LMAOOO_IDGAF"
+DB_PATH = "db.sqlite3"
+FILE_DIR =  "filestorage"
 
 class DataAccessLayer:
 
@@ -23,6 +28,23 @@ class DataAccessLayer:
         self.files = {}
         self.users = {}
         self.owners = {}
+        self.lock = threading.RLock()
+
+        self.file_dir = pathlib.Path(FILE_DIR)
+        # Create the directory if it doesn't exist
+        self.file_dir.mkdir(exist_ok=True)
+        log.info(f"using FILE_DIR = {str(self.file_dir.absolute())}")
+
+        self.conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+        self.cursor = self.conn.cursor()
+
+        with open("schema.sql") as f:
+            self.cursor.executescript(f.read())
+        
+        self.conn.commit()
+        atexit.register(self.conn.close)
+
+        log.info(f"initialized database at {str(pathlib.Path(DB_PATH).absolute())}")
 
     def store_file(self, username: str, name: str, content: bytes):
         if username not in self.owners:
@@ -30,14 +52,80 @@ class DataAccessLayer:
         self.owners[username].append(name)
         self.files[(username, name)] = content
     
+    def _store_file(self, username: str, name: str, content: bytes):
+        file_id = uuid.uuid4().hex
+        exists, user_id = self._check_user_exists(username)
+        assert exists, f"user {username} does not exist"
+
+        file_path = self.file_dir / file_id
+        with open(file_path, "wb") as f:
+            f.write(content)
+
+        with self.lock:
+            self.cursor.execute(
+                "INSERT INTO files (file_id, file_name, owner_id) VALUES (?, ?, ?)",
+                (file_id, name, user_id)
+            )
+            self.conn.commit()
+        
+
+    
     def load_file(self, username: str, name: str) -> Optional[bytes]:
         return self.files.get((username, name))
     
+    def _load_file(self, username: str, name: str) -> Optional[bytes]:
+        exists, user_id = self._check_user_exists(username)
+        assert exists, f"user {username} does not exist"
+        with self.lock:
+            self.cursor.execute(
+                "SELECT file_id FROM files WHERE file_name = ? AND owner_id = ?",
+                (name, user_id)
+            )
+            res = self.cursor.fetchone()
+            if res is None:
+                return None
+            else:
+                file_id = res[0]
+                file_path = self.file_dir / file_id
+                with open(file_path, "rb") as f:
+                    return f.read()
+    
     def check_file_exists(self, username: str, name: str) -> bool:
         return (username, name) in self.files
+    
+    def _check_file_exists(self, username: str, name: str) -> bool:
+        exists, user_id = self._check_user_exists(username)
+        assert exists, f"user {username} does not exist"
+        with self.lock:
+            self.cursor.execute(
+                "SELECT id FROM files WHERE file_name = ? AND owner_id = ?",
+                (name, user_id)
+            )
+            res = self.cursor.fetchone()
+            return res is not None
+    
+    def new_user(self, username: str, password: str):
+        self.users[username] = password
+    
+    def _new_user(self, username: str, password: str):
+        with self.lock:
+            self.cursor.execute("INSERT INTO users (username, password) VALUES (?, ?)", (username, password))
+            self.conn.commit()
 
     def check_user_exists(self, username: str) -> bool:
         return username in self.users
+    
+    
+    def _check_user_exists(self, username: str) -> bool:
+        with self.lock:
+            self.cursor.execute(
+                "SELECT id FROM users WHERE username = ?", (username,)
+            )
+            res = self.cursor.fetchone()
+            if res is not None:
+                return (True, res[0])
+            else:
+                return (False, None)
     
     def authenticate(self, username: str, password: str):
         return self.users.get(username) == password
@@ -75,13 +163,15 @@ class ServerProtocol:
         username = data["username"]
         password = data["password"]
 
-        if DATA.check_user_exists(username):
+        if DATA._check_user_exists(username)[0]:
             return {
                 "result": "error",
                 "message": f"user already exists: {username}"
             }
         
-        DATA.users[username] = password
+        DATA.new_user(username, password)
+        # CHANGELATER
+        DATA._new_user(username, password)
 
         return {
             "result": "success"
@@ -94,7 +184,15 @@ class ServerProtocol:
         username = token["username"]
         content = data["content"]
         decoded = base64.b64decode(content)
+
+        if DATA._check_file_exists(username, name):
+            return {
+                "result": "error",
+                "message": f"file already exists: {name}"
+            }
+
         DATA.store_file(username, name, decoded)
+        DATA._store_file(username, name, decoded)
 
         log.debug(f"files: {DATA.files}")
         return {
@@ -106,13 +204,13 @@ class ServerProtocol:
         name = data["name"]
         username = data["token"]["username"]
 
-        if not DATA.check_file_exists(username, name):
+        if not DATA._check_file_exists(username, name):
             return {
                 "result": "error",
                 "message": f"no such file: {name}"
             }
         
-        content = DATA.load_file(username, name)
+        content = DATA._load_file(username, name)
         encoded = base64.b64encode(content).decode(ENCODING)
         return {
             "result": "success",
@@ -123,7 +221,7 @@ class ServerProtocol:
         username = data["username"]
         password = data["password"]
 
-        if not DATA.check_user_exists(username):
+        if not DATA._check_user_exists(username):
             return {
                 "result": "error",
                 "message": f"no such user: {username}. please register first"
