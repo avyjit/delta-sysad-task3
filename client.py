@@ -86,7 +86,10 @@ class ClientProtocol:
         token = self.token()
 
         if token is None:
-            return
+            return {
+                "result": "error",
+                "message": "not logged in."
+            }
         
         self.send({
             "type": "download",
@@ -96,8 +99,7 @@ class ClientProtocol:
 
         response = self.response()
         if response["result"] != "success":
-            print(f"Download failed: {response['message']}")
-            return
+            return response
         content = base64.b64decode(response["content"])
         content = zlib.decompress(content)
 
@@ -107,11 +109,17 @@ class ClientProtocol:
     
         with open(output, "wb") as f:
             f.write(content)
+        
+        return {
+            "result": "success",
+        }
     
     def login(self, username: str, password: str):
         if os.path.exists("token.json"):
-            print("Already logged in.")
-            return
+            return {
+                "result": "info",
+                "message": "already logged in."
+            }
         
         self.send({
             "type": "login",
@@ -121,15 +129,17 @@ class ClientProtocol:
 
         token = self.response()
         if token["result"] != "success":
-            print(f"Login failed: {token['message']}")
+            return token
         else:
-            print(f"Login successful.")
             with open("token.json", "w") as f:
                 json.dump(token, f)
+        
+        return {
+            "result": "success",
+        }
     
     def token(self) -> Optional[Dict]:
         if not os.path.exists("token.json"):
-            print("You have not logged in yet.")
             return None
         
         with open("token.json", "r") as f:
@@ -176,15 +186,19 @@ def main():
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.connect((HOST, PORT))
     p = ClientProtocol(sock)
-
+    ret = None
     if args.subcommand == "register":
-        print(p.register(args.username, args.password))
+        ret = p.register(args.username, args.password)
     elif args.subcommand == "upload":
-        print(p.upload(args.path))
+        ret = p.upload(args.path)
     elif args.subcommand == "download":
-        p.download(args.name, args.output)
+        ret = p.download(args.name, args.output)
     elif args.subcommand == "login":
-        p.login(args.username, args.password)
+        ret = p.login(args.username, args.password)
+    
+    if ret is not None and ret["result"] != "success":
+        print(f"{ret['result']}: {ret['message']}")
+        sys.exit(1)
 
 if __name__ == '__main__':
     main()
