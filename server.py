@@ -11,9 +11,6 @@ class DataStore:
     def __init__(self):
         self.data = {}
         self.passwd = {}
-
-    def __repr__(self):
-        return f"Data({repr(self.data)})"
     
     def user_exists(self, username: str) -> bool:
         return username in self.passwd
@@ -80,6 +77,7 @@ class ServerProtocol:
             self.send_pair("result", "exists")
     
     def upload(self):
+        name = self.key("name")
         nbytes = int(self.key("bytes"))
         content = self.read_bytes(nbytes)
         with open("result.log", "wb") as f:

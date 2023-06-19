@@ -1,5 +1,6 @@
 import socket
 from typing import Optional
+import os
 import sys
 
 HOST = "127.0.0.1"  # The server's hostname or IP address
@@ -51,6 +52,7 @@ class ClientProtocol:
     
     def upload(self, path: str):
         self.message_type("upload")
+        self.pair("name", os.path.basename(path))
         with open(path, "rb") as f:
             data = f.read()
         self.pair("bytes", len(data))
