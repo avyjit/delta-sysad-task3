@@ -1,24 +1,23 @@
 #!/usr/bin/env python3
 
+import argparse
+import base64
+import json
 import os
 import socket
 import sys
 import zlib
-import json
-import base64
-import argparse
-from typing import Optional, Dict
+from typing import Dict, Optional
 
 HOST = "127.0.0.1"  # The server's hostname or IP address
 PORT = 6969  # The port used by the server
 
 
 class ClientProtocol:
-
     def __init__(self, socket):
         self.socket = socket
         self.encoding = "utf-8"
-    
+
     def readline(self) -> Optional[str]:
         line = ""
         while True:
@@ -30,7 +29,7 @@ class ClientProtocol:
                 break
             line += char
         return line
-    
+
     def read_bytes(self, nbytes: int) -> Optional[bytes]:
         data = b""
         while nbytes > 0:
@@ -40,28 +39,24 @@ class ClientProtocol:
             data += chunk
             nbytes -= len(chunk)
         return data
-    
+
     def writeline(self, line: str):
-        self.socket.sendall(bytes(line+"\n", self.encoding))
-    
+        self.socket.sendall(bytes(line + "\n", self.encoding))
+
     def send(self, data: Dict):
         self.writeline(json.dumps(data))
-    
+
     def response(self) -> Optional[Dict]:
         line = self.readline()
         if not line:
             return None
         return json.loads(line)
-    
+
     def register(self, username: str, password: str) -> str:
-        self.send({
-            "type": "register",
-            "username": username,
-            "password": password
-        })
+        self.send({"type": "register", "username": username, "password": password})
 
         return self.response()
-    
+
     def upload(self, path: str):
         token = self.token()
 
@@ -69,33 +64,28 @@ class ClientProtocol:
             return
         with open(path, "rb") as f:
             content = f.read()
-        
+
         content = zlib.compress(content, level=9)
         b64 = base64.b64encode(content).decode(self.encoding)
 
-        self.send({
-            "type": "upload",
-            "name": os.path.basename(path),
-            "content": b64,
-            "token": token
-        })
+        self.send(
+            {
+                "type": "upload",
+                "name": os.path.basename(path),
+                "content": b64,
+                "token": token,
+            }
+        )
 
         return self.response()
-    
+
     def download(self, name: str, output: Optional[str] = None):
         token = self.token()
 
         if token is None:
-            return {
-                "result": "error",
-                "message": "not logged in."
-            }
-        
-        self.send({
-            "type": "download",
-            "name": name,
-            "token": token
-        })
+            return {"result": "error", "message": "not logged in."}
+
+        self.send({"type": "download", "name": name, "token": token})
 
         response = self.response()
         if response["result"] != "success":
@@ -105,27 +95,19 @@ class ClientProtocol:
 
         if output is None:
             output = name
-        
-    
+
         with open(output, "wb") as f:
             f.write(content)
-        
+
         return {
             "result": "success",
         }
-    
+
     def login(self, username: str, password: str):
         if os.path.exists("token.json"):
-            return {
-                "result": "info",
-                "message": "already logged in."
-            }
-        
-        self.send({
-            "type": "login",
-            "username": username,
-            "password": password
-        })
+            return {"result": "info", "message": "already logged in."}
+
+        self.send({"type": "login", "username": username, "password": password})
 
         token = self.response()
         if token["result"] != "success":
@@ -133,56 +115,50 @@ class ClientProtocol:
         else:
             with open("token.json", "w") as f:
                 json.dump(token, f)
-        
+
         return {
             "result": "success",
         }
-    
+
     def token(self) -> Optional[Dict]:
         if not os.path.exists("token.json"):
             return None
-        
+
         with open("token.json", "r") as f:
             return json.load(f)
 
-    def close(self):
-        self.message_type("close")
-        self.socket.close()
-
-
 
 def main():
-    parser = argparse.ArgumentParser(description='Delta Fileserver Client')
+    parser = argparse.ArgumentParser(description="Delta Fileserver Client")
 
-    subparsers = parser.add_subparsers(title='subcommands', dest='subcommand')
+    subparsers = parser.add_subparsers(title="subcommands", dest="subcommand")
 
     # Register subcommand
-    register_parser = subparsers.add_parser('register', help='register a user')
-    register_parser.add_argument('username', type=str, help='Username')
-    register_parser.add_argument('password', type=str, help='Password')
-
+    register_parser = subparsers.add_parser("register", help="register a user")
+    register_parser.add_argument("username", type=str, help="Username")
+    register_parser.add_argument("password", type=str, help="Password")
 
     # Upload subcommand
-    upload_parser = subparsers.add_parser('upload', help='upload a file')
-    upload_parser.add_argument('path', type=str, help='path to file to be uploaded')
-
+    upload_parser = subparsers.add_parser("upload", help="upload a file")
+    upload_parser.add_argument("path", type=str, help="path to file to be uploaded")
 
     # Download subcommand
-    download_parser = subparsers.add_parser('download', help='download a file')
-    download_parser.add_argument('name', type=str, help='file name to download')
+    download_parser = subparsers.add_parser("download", help="download a file")
+    download_parser.add_argument("name", type=str, help="file name to download")
     # Add an optional output file
-    download_parser.add_argument('-o', '--output', type=str, required=False, help='output file to given path')
+    download_parser.add_argument(
+        "-o", "--output", type=str, required=False, help="output file to given path"
+    )
 
-    login_parser = subparsers.add_parser('login', help='login using credentials')
-    login_parser.add_argument('username', type=str, help='username')
-    login_parser.add_argument('password', type=str, help='password')
-
+    login_parser = subparsers.add_parser("login", help="login using credentials")
+    login_parser.add_argument("username", type=str, help="username")
+    login_parser.add_argument("password", type=str, help="password")
 
     args = parser.parse_args()
     if args.subcommand is None:
         parser.print_help()
         sys.exit(1)
-    
+
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.connect((HOST, PORT))
     p = ClientProtocol(sock)
@@ -195,10 +171,11 @@ def main():
         ret = p.download(args.name, args.output)
     elif args.subcommand == "login":
         ret = p.login(args.username, args.password)
-    
+
     if ret is not None and ret["result"] != "success":
         print(f"{ret['result']}: {ret['message']}")
         sys.exit(1)
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     main()
