@@ -102,23 +102,6 @@ class ClientProtocol:
         self.message_type("close")
         self.socket.close()
 
-class Client:
-
-    def __init__(self):
-        self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.socket.connect((HOST, PORT))
-
-    
-    def close(self):
-        self.socket.close()
-    
-    def send(self, data):
-        self.socket.sendall(data)
-    
-    def recv(self, size):
-        return self.socket.recv(size)
-
-
 socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 socket.connect((HOST, PORT))
 p = ClientProtocol(socket)
