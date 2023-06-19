@@ -4,6 +4,7 @@ import hmac
 import json
 import logging
 import threading
+from functools import wraps
 from socketserver import StreamRequestHandler, ThreadingTCPServer
 from typing import Dict, Optional
 
@@ -42,8 +43,8 @@ class ServerProtocol:
     def handle(self, data: Dict):
         handlers = {
             "register": self.handle_register,
-            "upload": self.handle_upload,
-            "download": self.handle_download,
+            "upload": self.authorized_only(self.handle_upload),
+            "download": self.authorized_only(self.handle_download),
             "login": self.handle_login
         }
 
@@ -103,6 +104,11 @@ class ServerProtocol:
     def handle_download(self, data: Dict):
         assert data["type"] == "download"
         name = data["name"]
+        if name not in DATA.files:
+            return {
+                "result": "error",
+                "message": f"no such file: {name}"
+            }
         content = DATA.files[name]
         encoded = base64.b64encode(content).decode(ENCODING)
         return {
@@ -139,6 +145,27 @@ class ServerProtocol:
         signature = hmac.new(SECRET_KEY, string.encode(ENCODING), "sha256").digest()
         signature = base64.b64encode(signature).decode(ENCODING)
         return signature
+    
+    def authorized_only(self, func):
+
+        @wraps(func)
+        def _authorized_handler(data: Dict):
+            if "token" not in data:
+                return {
+                    "result": "error",
+                    "message": "missing token (invalid json protocol)"
+                }
+            
+            token = data["token"]
+            if not self.authorize(token):
+                return {
+                    "result": "error",
+                    "message": "invalid token"
+                }
+            
+            return func(data)
+    
+        return _authorized_handler
 
 
 class RequestHandler(StreamRequestHandler):

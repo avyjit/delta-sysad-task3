@@ -83,9 +83,15 @@ class ClientProtocol:
         return self.response()
     
     def download(self, name: str, output: Optional[str] = None):
+        token = self.token()
+
+        if token is None:
+            return
+        
         self.send({
             "type": "download",
-            "name": name
+            "name": name,
+            "token": token
         })
 
         response = self.response()
