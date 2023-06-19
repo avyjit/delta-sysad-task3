@@ -28,8 +28,14 @@ class DataAccessLayer:
         if username not in self.owners:
             self.owners[username] = []
         self.owners[username].append(name)
-        self.files[name] = content
+        self.files[(username, name)] = content
     
+    def load_file(self, username: str, name: str) -> Optional[bytes]:
+        return self.files.get((username, name))
+    
+    def check_file_exists(self, username: str, name: str) -> bool:
+        return (username, name) in self.files
+
     def check_user_exists(self, username: str) -> bool:
         return username in self.users
     
@@ -84,19 +90,13 @@ class ServerProtocol:
     def handle_upload(self, data: Dict):
         assert data["type"] == "upload"
         token = data["token"]
-
-        if "token" not in data or not self.authorize(token):
-            return {
-                "result": "error",
-                "message": "invalid token"
-            }
-        
         name = data["name"]
         username = token["username"]
         content = data["content"]
         decoded = base64.b64decode(content)
         DATA.store_file(username, name, decoded)
 
+        log.debug(f"files: {DATA.files}")
         return {
             "result": "success"
         }
@@ -104,12 +104,15 @@ class ServerProtocol:
     def handle_download(self, data: Dict):
         assert data["type"] == "download"
         name = data["name"]
-        if name not in DATA.files:
+        username = data["token"]["username"]
+
+        if not DATA.check_file_exists(username, name):
             return {
                 "result": "error",
                 "message": f"no such file: {name}"
             }
-        content = DATA.files[name]
+        
+        content = DATA.load_file(username, name)
         encoded = base64.b64encode(content).decode(ENCODING)
         return {
             "result": "success",

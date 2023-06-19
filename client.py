@@ -95,7 +95,9 @@ class ClientProtocol:
         })
 
         response = self.response()
-        assert response["result"] == "success"
+        if response["result"] != "success":
+            print(f"Download failed: {response['message']}")
+            return
         content = base64.b64decode(response["content"])
         content = zlib.decompress(content)
 
