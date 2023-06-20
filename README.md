@@ -16,3 +16,14 @@ docker compose up
 docker-compose up
 ```
 The server should now be listening on port `6969`.
+
+## Using the client
+Make sure to make the client executable:
+```bash
+chmod +x client.py
+```
+
+To view all the options available to the client, run:
+```bash
+./client.py --help
+```
