@@ -296,7 +296,7 @@ def cleanup():
 
 
 if __name__ == "__main__":
-    HOST, PORT = "127.0.0.1", 6969
+    HOST, PORT = "0.0.0.0", 6969
 
     server = ThreadingTCPServer((HOST, PORT), RequestHandler)
     with server:
