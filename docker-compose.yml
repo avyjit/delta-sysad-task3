@@ -1,0 +1,12 @@
+version: '3'
+services:
+  fileserver:
+    build: .
+    restart: always
+    ports:
+      - '6969:6969'
+    volumes:
+      - fileserver-volume:/app
+
+volumes:
+  fileserver-volume:
