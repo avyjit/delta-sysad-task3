@@ -61,7 +61,8 @@ class ClientProtocol:
         token = self.token()
 
         if token is None:
-            return
+            return {"result": "error", "message": "not logged in."}
+
         with open(path, "rb") as f:
             content = f.read()
 
@@ -127,9 +128,19 @@ class ClientProtocol:
         with open("token.json", "r") as f:
             return json.load(f)
 
+    def logout(self):
+        if not os.path.exists("token.json"):
+            return {"result": "error", "message": "not logged in."}
+
+        os.remove("token.json")
+        return {"result": "success"}
+
 
 def main():
     parser = argparse.ArgumentParser(description="Delta Fileserver Client")
+
+    parser.add_argument("--host", type=str, default=HOST, help="server hostname")
+    parser.add_argument("-p", "--port", type=int, default=PORT, help="server port")
 
     subparsers = parser.add_subparsers(title="subcommands", dest="subcommand")
 
@@ -154,13 +165,15 @@ def main():
     login_parser.add_argument("username", type=str, help="username")
     login_parser.add_argument("password", type=str, help="password")
 
+    logout_parser = subparsers.add_parser("logout", help="logout")
+
     args = parser.parse_args()
     if args.subcommand is None:
         parser.print_help()
         sys.exit(1)
 
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sock.connect((HOST, PORT))
+    sock.connect((args.host, args.port))
     p = ClientProtocol(sock)
     ret = None
     if args.subcommand == "register":
@@ -171,6 +184,8 @@ def main():
         ret = p.download(args.name, args.output)
     elif args.subcommand == "login":
         ret = p.login(args.username, args.password)
+    elif args.subcommand == "logout":
+        ret = p.logout()
 
     if ret is not None and ret["result"] != "success":
         print(f"{ret['result']}: {ret['message']}")
