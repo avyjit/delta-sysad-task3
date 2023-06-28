@@ -107,7 +107,7 @@ class ClientProtocol:
         return {
             "result": "success",
         }
-    
+
     def list_files(self):
         token = self.token()
 
@@ -121,7 +121,7 @@ class ClientProtocol:
     def login(self, username: str, password: str):
         if os.path.exists("token.json"):
             return {"result": "info", "message": "already logged in."}
-        
+
         # Since the password was hashed while registering, we need to
         # to hash it before sending it also
         password = hashlib.sha256(password.encode(self.encoding)).hexdigest()

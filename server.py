@@ -103,7 +103,7 @@ class DataAccessLayer:
                 return (True, res[0])
             else:
                 return (False, None)
-    
+
     def get_files(self, username: str) -> List[str]:
         exists, user_id = self.check_user_exists(username)
         assert exists, f"user {username} does not exist"
@@ -221,7 +221,7 @@ class ServerProtocol:
             "username": username,
             "sign": self.compute_signature(username),
         }
-    
+
     def handle_list(self, data: Dict):
         username = data["token"]["username"]
         files = DATA.get_files(username)
