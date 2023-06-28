@@ -9,7 +9,7 @@ import threading
 import uuid
 from functools import wraps
 from socketserver import StreamRequestHandler, ThreadingTCPServer
-from typing import Dict, Optional
+from typing import Dict, List, Optional, Tuple
 
 logging.basicConfig(level=logging.DEBUG, format="[%(name)s]: %(message)s")
 log = logging.getLogger("server")
@@ -95,7 +95,7 @@ class DataAccessLayer:
             )
             self.conn.commit()
 
-    def check_user_exists(self, username: str) -> bool:
+    def check_user_exists(self, username: str) -> Tuple[bool, Optional[int]]:
         with self.lock:
             self.cursor.execute("SELECT id FROM users WHERE username = ?", (username,))
             res = self.cursor.fetchone()
@@ -103,6 +103,20 @@ class DataAccessLayer:
                 return (True, res[0])
             else:
                 return (False, None)
+    
+    def get_files(self, username: str) -> List[str]:
+        exists, user_id = self.check_user_exists(username)
+        assert exists, f"user {username} does not exist"
+        with self.lock:
+            self.cursor.execute(
+                "SELECT file_name FROM files WHERE owner_id = ?",
+                (user_id,),
+            )
+            res = self.cursor.fetchall()
+            if res is None:
+                return []
+            else:
+                return [x[0] for x in res]
 
     def authenticate(self, username: str, password: str):
         with self.lock:
@@ -125,6 +139,7 @@ class ServerProtocol:
             "register": self.handle_register,
             "upload": self.authorized_only(self.handle_upload),
             "download": self.authorized_only(self.handle_download),
+            "list": self.authorized_only(self.handle_list),
             "login": self.handle_login,
         }
 
@@ -206,6 +221,11 @@ class ServerProtocol:
             "username": username,
             "sign": self.compute_signature(username),
         }
+    
+    def handle_list(self, data: Dict):
+        username = data["token"]["username"]
+        files = DATA.get_files(username)
+        return {"result": "success", "files": files}
 
     def authorize(self, token: Dict) -> Optional[Dict]:
         """

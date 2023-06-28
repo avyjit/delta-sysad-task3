@@ -107,6 +107,16 @@ class ClientProtocol:
         return {
             "result": "success",
         }
+    
+    def list_files(self):
+        token = self.token()
+
+        if token is None:
+            return {"result": "error", "message": "not logged in."}
+
+        self.send({"type": "list", "token": token})
+
+        return self.response()
 
     def login(self, username: str, password: str):
         if os.path.exists("token.json"):
@@ -173,6 +183,7 @@ def main():
     login_parser.add_argument("password", type=str, help="password")
 
     logout_parser = subparsers.add_parser("logout", help="logout")
+    list_parser = subparsers.add_parser("list", help="list files")
 
     args = parser.parse_args()
     if args.subcommand is None:
@@ -193,6 +204,10 @@ def main():
         ret = p.login(args.username, args.password)
     elif args.subcommand == "logout":
         ret = p.logout()
+    elif args.subcommand == "list":
+        ret = p.list_files()
+        for file in ret["files"]:
+            print(file)
 
     if ret is not None and ret["result"] != "success":
         print(f"{ret['result']}: {ret['message']}")
