@@ -2,6 +2,7 @@
 
 import argparse
 import base64
+import hashlib
 import json
 import os
 import socket
@@ -53,6 +54,9 @@ class ClientProtocol:
         return json.loads(line)
 
     def register(self, username: str, password: str) -> str:
+        # Hash the password before sending it to the server
+        password = hashlib.sha256(password.encode(self.encoding)).hexdigest()
+
         self.send({"type": "register", "username": username, "password": password})
 
         return self.response()
@@ -107,7 +111,10 @@ class ClientProtocol:
     def login(self, username: str, password: str):
         if os.path.exists("token.json"):
             return {"result": "info", "message": "already logged in."}
-
+        
+        # Since the password was hashed while registering, we need to
+        # to hash it before sending it also
+        password = hashlib.sha256(password.encode(self.encoding)).hexdigest()
         self.send({"type": "login", "username": username, "password": password})
 
         token = self.response()
