@@ -9,6 +9,7 @@ import socket
 import sys
 import zlib
 from typing import Dict, Optional
+import re
 
 HOST = "127.0.0.1"  # The server's hostname or IP address
 PORT = 6969  # The port used by the server
@@ -196,6 +197,9 @@ def main():
     list_parser = subparsers.add_parser("list", help="list files")
     delete_parser = subparsers.add_parser("delete", help="delete a file")
     delete_parser.add_argument("name", type=str, help="file name to delete")
+    search_parser = subparsers.add_parser("search", help="search for a file using regex")
+    search_parser.add_argument("regex", type=str, help="regex to search for")
+
 
     args = parser.parse_args()
     if args.subcommand is None:
@@ -218,10 +222,22 @@ def main():
         ret = p.logout()
     elif args.subcommand == "list":
         ret = p.list_files()
-        for file in ret["files"]:
-            print(file)
+        if "files" in ret:
+            for file in ret["files"]:
+                print(file)
     elif args.subcommand == "delete":
         ret = p.delete(args.name)
+    elif args.subcommand == "search":
+        ret = p.list_files()
+        try:
+            regex = re.compile(args.regex)
+        except Exception as e:
+            print(f"Invalid regex: {e}")
+            sys.exit(1)
+        if "files" in ret:
+            for f in ret["files"]:
+                if regex.match(f):
+                    print(f)
 
     if ret is not None and ret["result"] != "success":
         print(f"{ret['result']}: {ret['message']}")
