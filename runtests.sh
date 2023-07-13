@@ -20,4 +20,3 @@ kill $server_pid
 # cleanup
 rm -rf db.sqlite3
 rm -rf filestorage
-rm token.json
