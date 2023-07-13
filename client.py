@@ -53,7 +53,7 @@ class ClientProtocol:
             return None
         return json.loads(line)
 
-    def register(self, username: str, password: str) -> str:
+    def register(self, username: str, password: str) -> Optional[Dict]:
         # Hash the password before sending it to the server
         password = hashlib.sha256(password.encode(self.encoding)).hexdigest()
 
@@ -151,6 +151,16 @@ class ClientProtocol:
 
         os.remove("token.json")
         return {"result": "success"}
+    
+    def delete(self, name: str):
+        token = self.token()
+
+        if token is None:
+            return {"result": "error", "message": "not logged in."}
+
+        self.send({"type": "delete", "name": name, "token": token})
+
+        return self.response()
 
 
 def main():
@@ -184,6 +194,8 @@ def main():
 
     logout_parser = subparsers.add_parser("logout", help="logout")
     list_parser = subparsers.add_parser("list", help="list files")
+    delete_parser = subparsers.add_parser("delete", help="delete a file")
+    delete_parser.add_argument("name", type=str, help="file name to delete")
 
     args = parser.parse_args()
     if args.subcommand is None:
@@ -208,6 +220,8 @@ def main():
         ret = p.list_files()
         for file in ret["files"]:
             print(file)
+    elif args.subcommand == "delete":
+        ret = p.delete(args.name)
 
     if ret is not None and ret["result"] != "success":
         print(f"{ret['result']}: {ret['message']}")

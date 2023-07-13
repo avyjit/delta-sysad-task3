@@ -7,6 +7,7 @@ import pathlib
 import sqlite3
 import threading
 import uuid
+import time
 from functools import wraps
 from socketserver import StreamRequestHandler, ThreadingTCPServer
 from typing import Dict, List, Optional, Tuple
@@ -75,7 +76,31 @@ class DataAccessLayer:
                 file_path = self.file_dir / file_id
                 with open(file_path, "rb") as f:
                     return f.read()
-
+    
+    def delete_file(self, username: str, name: str) -> Optional[str]:
+        exists, user_id = self.check_user_exists(username)
+        assert exists, f"user {username} does not exist"
+        with self.lock:
+            self.cursor.execute(
+                "SELECT file_id FROM files WHERE file_name = ? AND owner_id = ?",
+                (name, user_id),
+            )
+            res = self.cursor.fetchone()
+            if res is None:
+                return None
+            else:
+                # Delete the file associated with this row
+                file_id = res[0]
+                file_path: pathlib.Path = self.file_dir / file_id
+                file_path.unlink()
+            
+            self.cursor.execute(
+                "DELETE FROM files WHERE file_name = ? AND owner_id = ?",
+                (name, user_id),
+            )
+            self.conn.commit()
+            return True
+        
     def check_file_exists(self, username: str, name: str) -> bool:
         exists, user_id = self.check_user_exists(username)
         assert exists, f"user {username} does not exist"
@@ -140,6 +165,7 @@ class ServerProtocol:
             "upload": self.authorized_only(self.handle_upload),
             "download": self.authorized_only(self.handle_download),
             "list": self.authorized_only(self.handle_list),
+            "delete": self.authorized_only(self.handle_delete),
             "login": self.handle_login,
         }
 
@@ -189,7 +215,19 @@ class ServerProtocol:
         content = DATA.load_file(username, name)
         encoded = base64.b64encode(content).decode(ENCODING)
         return {"result": "success", "content": encoded}
+    
+    def handle_delete(self, data: Dict):
+        assert data["type"] == "delete"
+        name = data["name"]
+        username = data["token"]["username"]
 
+        res = DATA.delete_file(username, name)
+
+        if res is None:
+            return {"result": "error", "message": f"could not delete: {name}"}
+        else:
+            return {"result": "success"}
+        
     def handle_login(self, data: Dict):
         """
         Checks if the user exists and if the password is correct.
@@ -329,4 +367,6 @@ if __name__ == "__main__":
         server_thread.start()
         log.info(f"main: {server_thread}")
         while True:
-            pass
+            # Sleep to reduce CPU usage instead of
+            # busy waiting
+            time.sleep(60)
