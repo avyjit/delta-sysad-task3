@@ -5,14 +5,46 @@ import base64
 import hashlib
 import json
 import os
+import re
 import socket
 import sys
 import zlib
 from typing import Dict, Optional
-import re
+
+from Crypto.Cipher import AES
+from Crypto.Random import get_random_bytes
+from Crypto.Util.Padding import pad, unpad
 
 HOST = "127.0.0.1"  # The server's hostname or IP address
 PORT = 6969  # The port used by the server
+
+
+class Cipher:
+    def __init__(self, key: Optional[bytes] = None):
+        if key is None:
+            key = get_random_bytes(32)
+        self.key = key
+
+    @classmethod
+    def load(cls):
+        if not os.path.exists("aes_key.log"):
+            return cls(get_random_bytes(32))
+        with open("aes_key.log", "rb") as f:
+            return cls(f.read(32))
+
+    def encrypt(self, data: bytes) -> bytes:
+        cipher = AES.new(self.key, AES.MODE_ECB)
+        ciphertext = cipher.encrypt(pad(data, AES.block_size))
+        return ciphertext
+
+    def decrypt(self, data: bytes) -> bytes:
+        cipher = AES.new(self.key, AES.MODE_ECB)
+        plaintext = unpad(cipher.decrypt(data), AES.block_size)
+        return plaintext
+
+    def save(self):
+        with open("aes_key.log", "wb") as f:
+            f.write(self.key)
 
 
 class ClientProtocol:
@@ -72,6 +104,11 @@ class ClientProtocol:
             content = f.read()
 
         content = zlib.compress(content, level=9)
+
+        cipher = Cipher.load()
+        content = cipher.encrypt(content)
+        cipher.save()
+
         b64 = base64.b64encode(content).decode(self.encoding)
 
         self.send(
@@ -97,6 +134,11 @@ class ClientProtocol:
         if response["result"] != "success":
             return response
         content = base64.b64decode(response["content"])
+
+        cipher = Cipher.load()
+        content = cipher.decrypt(content)
+        cipher.save()
+
         content = zlib.decompress(content)
 
         if output is None:
@@ -152,7 +194,7 @@ class ClientProtocol:
 
         os.remove("token.json")
         return {"result": "success"}
-    
+
     def delete(self, name: str):
         token = self.token()
 
@@ -197,9 +239,10 @@ def main():
     list_parser = subparsers.add_parser("list", help="list files")
     delete_parser = subparsers.add_parser("delete", help="delete a file")
     delete_parser.add_argument("name", type=str, help="file name to delete")
-    search_parser = subparsers.add_parser("search", help="search for a file using regex")
+    search_parser = subparsers.add_parser(
+        "search", help="search for a file using regex"
+    )
     search_parser.add_argument("regex", type=str, help="regex to search for")
-
 
     args = parser.parse_args()
     if args.subcommand is None:
